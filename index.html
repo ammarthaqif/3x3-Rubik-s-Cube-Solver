@@ -5,25 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3x3 Rubik's Cube Solver - Standalone</title>
     <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
     <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@latest" crossorigin="anonymous"></script>
     <!-- React & ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
     <!-- Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
     <!-- Confetti -->
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js" crossorigin="anonymous"></script>
     <!-- Kociemba Solver (min2phase) -->
-    <script src="https://unpkg.com/cube-solver@2.4.1/dist/index.js" onload="console.log('Solver: unpkg loaded')" onerror="console.warn('Solver: unpkg failed')"></script>
-    <script src="https://cdn.jsdelivr.net/npm/cube-solver@2.4.1/dist/index.min.js" onload="console.log('Solver: jsdelivr loaded')" onerror="console.warn('Solver: jsdelivr failed')"></script>
+    <script src="https://unpkg.com/cube-solver@2.4.1/dist/index.js" crossorigin="anonymous" onload="console.log('Solver: unpkg loaded')" onerror="console.warn('Solver: unpkg failed')"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cube-solver@2.4.1/dist/index.min.js" crossorigin="anonymous" onload="console.log('Solver: jsdelivr loaded')" onerror="console.warn('Solver: jsdelivr failed')"></script>
+    <script src="https://unpkg.com/min2phase@1.0.1/dist/index.min.js" crossorigin="anonymous" onload="console.log('Solver: min2phase loaded')" onerror="console.warn('Solver: min2phase failed')"></script>
     <!-- Fallback for older browsers or CDN issues -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cube-solver/2.4.1/index.min.js" onload="console.log('Solver: cdnjs loaded')" onerror="console.warn('Solver: cdnjs failed')"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cube-solver/2.4.1/index.min.js" crossorigin="anonymous" onload="console.log('Solver: cdnjs loaded')" onerror="console.warn('Solver: cdnjs failed')"></script>
     
     <!-- Three.js for 3D visualization -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
     
     <script>
         // Diagnostic logging
@@ -40,6 +41,8 @@
             console.log('Window loaded. Checking libraries...');
             console.log('React:', !!window.React);
             console.log('Three:', !!window.THREE);
+            console.log('Babel:', !!window.Babel);
+            console.log('CubeSolver:', !!(window.CubeSolver || window.solve || window.min2phase));
             
             // Comprehensive solver check
             const solverFound = !!(window.solve || window.CubeSolver || window.min2phase);
@@ -260,7 +263,7 @@
                 for (let x = -1; x <= 1; x++) {
                     for (let y = -1; y <= 1; y++) {
                         for (let z = -1; z <= 1; z++) {
-                            const materials = Array(6).fill(new THREE.MeshLambertMaterial({ color: 0x222222 }));
+                            const materials = Array.from({ length: 6 }, () => new THREE.MeshLambertMaterial({ color: 0x222222 }));
                             const mesh = new THREE.Mesh(geometry, materials);
                             mesh.position.set(x, y, z);
                             scene.add(mesh);
@@ -289,14 +292,21 @@
 
                 return () => {
                     window.removeEventListener('resize', handleResize);
-                    mountRef.current?.removeChild(renderer.domElement);
+                    if (mountRef.current && renderer.domElement && mountRef.current.contains(renderer.domElement)) {
+                        mountRef.current.removeChild(renderer.domElement);
+                    }
                     renderer.dispose();
                 };
             }, []);
 
             useEffect(() => {
-                if (!cubesRef.current.length) return;
-
+                if (!cubesRef.current || cubesRef.current.length === 0) {
+                    console.log("Cube3D: No cubes to update");
+                    return;
+                }
+                
+                console.log("Cube3D: Updating colors for state", cubeState);
+                
                 const colorToHex = (c) => {
                     const map = {
                         white: 0xffffff,
@@ -320,61 +330,46 @@
                     materials.forEach(m => m.color.setHex(0x111111));
 
                     // Top (U): y = 1
-                    if (y === 1) {
-                        const idx = (z + 1) * 3 + (x + 1); // Mapping 3D (x,z) to 2D grid
-                        // Kociemba U: 0-8 (Top-Left to Bottom-Right)
-                        // In our 3D: x from -1 to 1, z from -1 to 1
-                        // Kociemba U grid:
-                        // 0 1 2  (z=-1)
-                        // 3 4 5  (z=0)
-                        // 6 7 8  (z=1)
+                    if (Math.abs(y - 1) < 0.1) {
                         const kIdx = (z + 1) * 3 + (x + 1);
-                        materials[2].color.setHex(colorToHex(cubeState.U[kIdx]));
+                        if (cubeState.U && cubeState.U[kIdx]) {
+                            materials[2].color.setHex(colorToHex(cubeState.U[kIdx]));
+                        }
                     }
                     // Bottom (D): y = -1
-                    if (y === -1) {
-                        // Kociemba D grid:
-                        // 0 1 2 (z=1)
-                        // 3 4 5 (z=0)
-                        // 6 7 8 (z=-1)
+                    if (Math.abs(y + 1) < 0.1) {
                         const kIdx = (1 - z) * 3 + (x + 1);
-                        materials[3].color.setHex(colorToHex(cubeState.D[kIdx]));
+                        if (cubeState.D && cubeState.D[kIdx]) {
+                            materials[3].color.setHex(colorToHex(cubeState.D[kIdx]));
+                        }
                     }
                     // Front (F): z = 1
-                    if (z === 1) {
-                        // Kociemba F grid:
-                        // 0 1 2 (y=1)
-                        // 3 4 5 (y=0)
-                        // 6 7 8 (y=-1)
+                    if (Math.abs(z - 1) < 0.1) {
                         const kIdx = (1 - y) * 3 + (x + 1);
-                        materials[4].color.setHex(colorToHex(cubeState.F[kIdx]));
+                        if (cubeState.F && cubeState.F[kIdx]) {
+                            materials[4].color.setHex(colorToHex(cubeState.F[kIdx]));
+                        }
                     }
                     // Back (B): z = -1
-                    if (z === -1) {
-                        // Kociemba B grid:
-                        // 0 1 2 (y=1)
-                        // 3 4 5 (y=0)
-                        // 6 7 8 (y=-1)
+                    if (Math.abs(z + 1) < 0.1) {
                         const kIdx = (1 - y) * 3 + (1 - x);
-                        materials[5].color.setHex(colorToHex(cubeState.B[kIdx]));
+                        if (cubeState.B && cubeState.B[kIdx]) {
+                            materials[5].color.setHex(colorToHex(cubeState.B[kIdx]));
+                        }
                     }
                     // Left (L): x = -1
-                    if (x === -1) {
-                        // Kociemba L grid:
-                        // 0 1 2 (y=1)
-                        // 3 4 5 (y=0)
-                        // 6 7 8 (y=-1)
+                    if (Math.abs(x + 1) < 0.1) {
                         const kIdx = (1 - y) * 3 + (z + 1);
-                        materials[1].color.setHex(colorToHex(cubeState.L[kIdx]));
+                        if (cubeState.L && cubeState.L[kIdx]) {
+                            materials[1].color.setHex(colorToHex(cubeState.L[kIdx]));
+                        }
                     }
                     // Right (R): x = 1
-                    if (x === 1) {
-                        // Kociemba R grid:
-                        // 0 1 2 (y=1)
-                        // 3 4 5 (y=0)
-                        // 6 7 8 (y=-1)
+                    if (Math.abs(x - 1) < 0.1) {
                         const kIdx = (1 - y) * 3 + (1 - z);
-                        materials[0].color.setHex(colorToHex(cubeState.R[kIdx]));
+                        if (cubeState.R && cubeState.R[kIdx]) {
+                            materials[0].color.setHex(colorToHex(cubeState.R[kIdx]));
+                        }
                     }
                 });
             }, [cubeState]);
@@ -399,8 +394,6 @@
                 if (isSolving && initialInputState && currentStep >= 0) {
                     const stateAtStep = getCubeAtStep(initialInputState, solution, currentStep);
                     setCube(stateAtStep);
-                } else if (!isSolving && initialInputState && currentStep === -1) {
-                    setCube(initialInputState);
                 }
             }, [currentStep, isSolving, initialInputState, solution]);
 
@@ -471,8 +464,9 @@
                         return;
                     }
 
-                    const cubeString = getKociembaString(cube);
-                    setInitialInputState(JSON.parse(JSON.stringify(cube)));
+                    const currentState = JSON.parse(JSON.stringify(cube));
+                    setInitialInputState(currentState);
+                    const cubeString = getKociembaString(currentState);
                     
                     console.log("Input string:", cubeString);
 
@@ -480,21 +474,82 @@
                     // The cube-solver package usually exports a 'solve' function
                     let solver = null;
                     
-                    if (typeof window.solve === 'function') {
-                        solver = window.solve;
-                    } else if (window.CubeSolver) {
-                        solver = window.CubeSolver.solve || window.CubeSolver.default;
-                        if (!solver && typeof window.CubeSolver === 'function') {
-                            solver = window.CubeSolver;
+                    const isNative = (fn) => {
+                        if (typeof fn !== 'function') return false;
+                        
+                        // Check by reference to known problematic browser APIs
+                        try {
+                            if (fn === window.webkitResolveLocalFileSystemURL || 
+                                fn === window.resolveLocalFileSystemURL ||
+                                fn === window.webkitRequestFileSystem ||
+                                fn === window.requestFileSystem) return true;
+                        } catch (e) {}
+
+                        const str = fn.toString();
+                        const name = fn.name || '';
+                        
+                        // Native functions usually have "[native code]" in their string representation
+                        // We also exclude functions with names that suggest they are browser APIs
+                        if (str.includes('[native code]')) return true;
+                        if (name.toLowerCase().includes('webkit')) return true;
+                        if (name.toLowerCase().includes('resolve')) return true;
+                        if (name.toLowerCase().includes('filesystem')) return true;
+                        if (name.toLowerCase().includes('request')) return true;
+                        if (name === 'solve' && str.includes('[native code]')) return true;
+                        
+                        return false;
+                    };
+
+                    const testSolver = (fn) => {
+                        if (typeof fn !== 'function') return false;
+                        if (isNative(fn)) return false;
+                        try {
+                            // Test with a solved cube string (54 chars)
+                            // A valid solver should return an empty string or a solution string
+                            const testResult = fn("UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB");
+                            return typeof testResult === 'string';
+                        } catch (e) {
+                            return false;
                         }
-                    } else if (window.min2phase) {
+                    };
+
+                    // 1. Try min2phase first (most specific)
+                    if (window.min2phase && testSolver(window.min2phase.solve)) {
                         solver = window.min2phase.solve;
+                    } 
+                    
+                    // 2. Try CubeSolver
+                    if (!solver && window.CubeSolver) {
+                        const potential = window.CubeSolver.solve || window.CubeSolver.default || window.CubeSolver;
+                        if (testSolver(potential)) {
+                            solver = potential;
+                        }
+                    }
+                    
+                    // 3. Try window.solve
+                    if (!solver && testSolver(window.solve)) {
+                        solver = window.solve;
+                    }
+                    
+                    // 4. Last resort: search all globals for a working solver
+                    if (!solver) {
+                        const possibleKeys = Object.keys(window).filter(k => 
+                            (k.toLowerCase().includes('solve') || k.toLowerCase().includes('cube')) && 
+                            !k.startsWith('webkit') && !k.startsWith('moz')
+                        );
+                        for (const key of possibleKeys) {
+                            if (testSolver(window[key])) {
+                                console.log("Found working solver in global:", key);
+                                solver = window[key];
+                                break;
+                            }
+                        }
                     }
                     
                     if (!solver) {
                         console.log("Available globals for debugging:", Object.keys(window).filter(k => 
                             (k.toLowerCase().includes('solve') || k.toLowerCase().includes('cube')) && 
-                            !k.startsWith('webkit') && !k.startsWith('moz')
+                            !k.startsWith('webkit') && !k.startsWith('moz') && !isNative(window[k])
                         ));
                         throw new Error("Solver library not loaded. Please check your internet connection or try refreshing the page.");
                     }
@@ -527,8 +582,10 @@
             };
 
             const handleCellClick = (face, index) => {
+                console.log("handleCellClick", face, index, selectedColor);
                 if (isSolving) return;
                 const newCube = { ...cube };
+                newCube[face] = [...newCube[face]];
                 newCube[face][index] = selectedColor;
                 setCube(newCube);
             };
