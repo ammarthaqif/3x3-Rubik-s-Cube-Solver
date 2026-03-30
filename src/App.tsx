@@ -21,11 +21,12 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 // @ts-ignore
-import solver from 'cube-solver';
+import * as CubeSolver from 'cube-solver';
 import { Color, CubeState, INITIAL_STATE, COLOR_MAP, FACE_NAMES } from './types';
 import { getCubeAtStep } from './lib/cubeLogic';
 
 console.log("Kociemba Solver App Initializing...");
+console.log("Solver module:", CubeSolver);
 
 export default function App() {
   const [cube, setCube] = useState<CubeState>(INITIAL_STATE);
@@ -74,18 +75,19 @@ export default function App() {
       
       console.log("Solving cube:", cubeString);
       
-      // Try to use the solver
+      // Try to use the solver with multiple fallback patterns
       let result: string | null = null;
+      const solver = (CubeSolver as any).default || (CubeSolver as any).solve || CubeSolver;
       
+      console.log("Resolved solver function:", solver);
+
       if (typeof solver === 'function') {
-        result = (solver as any)(cubeString);
-      } else if (typeof (solver as any).solve === 'function') {
-        result = (solver as any).solve(cubeString);
-      } else if (typeof (solver as any).default === 'function') {
-        result = (solver as any).default(cubeString);
+        result = solver(cubeString);
+      } else if (typeof (CubeSolver as any).solve === 'function') {
+        result = (CubeSolver as any).solve(cubeString);
       } else {
-        console.error("Solver is not a function:", solver);
-        throw new Error("Solver function not found. Please check console.");
+        console.error("Solver is not a function. Module contents:", CubeSolver);
+        throw new Error("Solver function not found. Check console for details.");
       }
 
       if (result) {
@@ -96,8 +98,8 @@ export default function App() {
         setIsSolving(true);
       }
     } catch (err) {
-      setError("Invalid cube configuration or solver error. Please check the colors.");
-      console.error("Solve error:", err);
+      setError(`Solve error: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("Detailed solve error:", err);
     }
   };
 
