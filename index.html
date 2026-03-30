@@ -16,10 +16,10 @@
     <!-- Confetti -->
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     <!-- Kociemba Solver (min2phase) -->
-    <script src="https://unpkg.com/cube-solver@2.4.1/dist/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/cube-solver@2.4.1/dist/index.min.js"></script>
+    <script src="https://unpkg.com/cube-solver@2.4.1/dist/index.js" onload="console.log('Solver: unpkg loaded')" onerror="console.warn('Solver: unpkg failed')"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cube-solver@2.4.1/dist/index.min.js" onload="console.log('Solver: jsdelivr loaded')" onerror="console.warn('Solver: jsdelivr failed')"></script>
     <!-- Fallback for older browsers or CDN issues -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cube-solver/2.4.1/index.min.js" onerror="console.warn('CDN Fallback 2 failed')"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cube-solver/2.4.1/index.min.js" onload="console.log('Solver: cdnjs loaded')" onerror="console.warn('Solver: cdnjs failed')"></script>
     
     <!-- Three.js for 3D visualization -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -42,18 +42,26 @@
             console.log('Three:', !!window.THREE);
             
             // Comprehensive solver check
-            const solverFound = !!(window.solve || window.CubeSolver || (window.module && window.module.exports && window.module.exports.solve));
+            const solverFound = !!(window.solve || window.CubeSolver || window.min2phase);
             console.log('Solver detected:', solverFound);
             
             if (!solverFound) {
                 console.log('Debugging globals:');
                 const possibleKeys = Object.keys(window).filter(k => 
-                    k.toLowerCase().includes('solve') || 
-                    k.toLowerCase().includes('cube') || 
-                    k.toLowerCase().includes('phase')
+                    (k.toLowerCase().includes('solve') || k.toLowerCase().includes('cube')) &&
+                    !k.startsWith('webkit') && !k.startsWith('moz') &&
+                    typeof window[k] !== 'undefined'
                 );
                 console.log('Potential solver keys in window:', possibleKeys);
+            } else {
+                if (window.solve) console.log('Found window.solve');
+                if (window.CubeSolver) console.log('Found window.CubeSolver');
+                if (window.min2phase) console.log('Found window.min2phase');
             }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM Content Loaded. Solver check:', !!(window.solve || window.CubeSolver || window.min2phase));
         });
     </script>
 
@@ -470,26 +478,24 @@
 
                     // Use the global solver from the script tag
                     // The cube-solver package usually exports a 'solve' function
-                    let solver = window.solve;
+                    let solver = null;
                     
-                    if (!solver && window.CubeSolver) {
-                        solver = window.CubeSolver.solve || window.CubeSolver.default || (typeof window.CubeSolver === 'function' ? window.CubeSolver : null);
-                    }
-                    
-                    // Last resort: search window for anything that looks like a solver function
-                    if (!solver) {
-                        const possibleKeys = Object.keys(window).filter(k => 
-                            (k.toLowerCase().includes('solve') || k.toLowerCase().includes('cube')) && 
-                            typeof window[k] === 'function'
-                        );
-                        if (possibleKeys.length > 0) {
-                            console.log("Found potential solver in global:", possibleKeys[0]);
-                            solver = window[possibleKeys[0]];
+                    if (typeof window.solve === 'function') {
+                        solver = window.solve;
+                    } else if (window.CubeSolver) {
+                        solver = window.CubeSolver.solve || window.CubeSolver.default;
+                        if (!solver && typeof window.CubeSolver === 'function') {
+                            solver = window.CubeSolver;
                         }
+                    } else if (window.min2phase) {
+                        solver = window.min2phase.solve;
                     }
                     
                     if (!solver) {
-                        console.log("Available globals for debugging:", Object.keys(window).filter(k => k.toLowerCase().includes('solve') || k.toLowerCase().includes('cube')));
+                        console.log("Available globals for debugging:", Object.keys(window).filter(k => 
+                            (k.toLowerCase().includes('solve') || k.toLowerCase().includes('cube')) && 
+                            !k.startsWith('webkit') && !k.startsWith('moz')
+                        ));
                         throw new Error("Solver library not loaded. Please check your internet connection or try refreshing the page.");
                     }
 
