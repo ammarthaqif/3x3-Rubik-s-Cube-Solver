@@ -17,7 +17,29 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     <!-- Kociemba Solver (min2phase) -->
     <script src="https://cdn.jsdelivr.net/npm/cube-solver@2.4.1/dist/index.min.js"></script>
+    <!-- Three.js for 3D visualization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     
+    <script>
+        // Diagnostic logging
+        window.addEventListener('error', function(e) {
+            console.error('Global error:', e.message, 'at', e.filename, ':', e.lineno);
+            const errorDiv = document.getElementById('error-display');
+            if (errorDiv) {
+                errorDiv.style.display = 'block';
+                errorDiv.innerText = 'Runtime Error: ' + e.message;
+            }
+        });
+        
+        window.addEventListener('load', function() {
+            console.log('Window loaded. Checking libraries...');
+            console.log('React:', !!window.React);
+            console.log('Three:', !!window.THREE);
+            console.log('Solver:', !!(window.solve || window.CubeSolver));
+        });
+    </script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body {
@@ -70,6 +92,7 @@
     </style>
 </head>
 <body>
+    <div id="error-display" style="display:none; background: #ef4444; color: white; padding: 10px; position: fixed; top: 0; left: 0; width: 100%; z-index: 9999; font-family: sans-serif; font-size: 12px;"></div>
     <div id="root"></div>
 
     <script type="text/babel">
@@ -170,6 +193,170 @@
             return currentState;
         };
 
+        const Cube3D = ({ cubeState }) => {
+            const mountRef = useRef(null);
+            const sceneRef = useRef(null);
+            const cubesRef = useRef([]);
+
+            useEffect(() => {
+                if (!mountRef.current) return;
+
+                const width = mountRef.current.clientWidth;
+                const height = mountRef.current.clientHeight;
+
+                // Scene setup
+                const scene = new THREE.Scene();
+                sceneRef.current = scene;
+                const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+                camera.position.set(5, 5, 5);
+                camera.lookAt(0, 0, 0);
+
+                const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                renderer.setSize(width, height);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                mountRef.current.appendChild(renderer.domElement);
+
+                const controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.enableZoom = false;
+
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+                scene.add(ambientLight);
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+                directionalLight.position.set(10, 10, 10);
+                scene.add(directionalLight);
+
+                // Create Cubies
+                const cubes = [];
+                const geometry = new THREE.BoxGeometry(0.95, 0.95, 0.95);
+                
+                for (let x = -1; x <= 1; x++) {
+                    for (let y = -1; y <= 1; y++) {
+                        for (let z = -1; z <= 1; z++) {
+                            const materials = Array(6).fill(new THREE.MeshLambertMaterial({ color: 0x222222 }));
+                            const mesh = new THREE.Mesh(geometry, materials);
+                            mesh.position.set(x, y, z);
+                            scene.add(mesh);
+                            cubes.push({ mesh, x, y, z });
+                        }
+                    }
+                }
+                cubesRef.current = cubes;
+
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    controls.update();
+                    renderer.render(scene, camera);
+                };
+                animate();
+
+                const handleResize = () => {
+                    if (!mountRef.current) return;
+                    const w = mountRef.current.clientWidth;
+                    const h = mountRef.current.clientHeight;
+                    camera.aspect = w / h;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(w, h);
+                };
+                window.addEventListener('resize', handleResize);
+
+                return () => {
+                    window.removeEventListener('resize', handleResize);
+                    mountRef.current?.removeChild(renderer.domElement);
+                    renderer.dispose();
+                };
+            }, []);
+
+            useEffect(() => {
+                if (!cubesRef.current.length) return;
+
+                const colorToHex = (c) => {
+                    const map = {
+                        white: 0xffffff,
+                        yellow: 0xffff00,
+                        red: 0xff0000,
+                        orange: 0xff8800,
+                        green: 0x00ff00,
+                        blue: 0x0000ff,
+                        gray: 0x333333
+                    };
+                    return map[c] || 0x333333;
+                };
+
+                // Update colors based on cubeState
+                // Faces: 0:Right, 1:Left, 2:Top, 3:Bottom, 4:Front, 5:Back
+                cubesRef.current.forEach(cubie => {
+                    const { mesh, x, y, z } = cubie;
+                    const materials = mesh.material;
+
+                    // Reset all to black/gray
+                    materials.forEach(m => m.color.setHex(0x111111));
+
+                    // Top (U): y = 1
+                    if (y === 1) {
+                        const idx = (z + 1) * 3 + (x + 1); // Mapping 3D (x,z) to 2D grid
+                        // Kociemba U: 0-8 (Top-Left to Bottom-Right)
+                        // In our 3D: x from -1 to 1, z from -1 to 1
+                        // Kociemba U grid:
+                        // 0 1 2  (z=-1)
+                        // 3 4 5  (z=0)
+                        // 6 7 8  (z=1)
+                        const kIdx = (z + 1) * 3 + (x + 1);
+                        materials[2].color.setHex(colorToHex(cubeState.U[kIdx]));
+                    }
+                    // Bottom (D): y = -1
+                    if (y === -1) {
+                        // Kociemba D grid:
+                        // 0 1 2 (z=1)
+                        // 3 4 5 (z=0)
+                        // 6 7 8 (z=-1)
+                        const kIdx = (1 - z) * 3 + (x + 1);
+                        materials[3].color.setHex(colorToHex(cubeState.D[kIdx]));
+                    }
+                    // Front (F): z = 1
+                    if (z === 1) {
+                        // Kociemba F grid:
+                        // 0 1 2 (y=1)
+                        // 3 4 5 (y=0)
+                        // 6 7 8 (y=-1)
+                        const kIdx = (1 - y) * 3 + (x + 1);
+                        materials[4].color.setHex(colorToHex(cubeState.F[kIdx]));
+                    }
+                    // Back (B): z = -1
+                    if (z === -1) {
+                        // Kociemba B grid:
+                        // 0 1 2 (y=1)
+                        // 3 4 5 (y=0)
+                        // 6 7 8 (y=-1)
+                        const kIdx = (1 - y) * 3 + (1 - x);
+                        materials[5].color.setHex(colorToHex(cubeState.B[kIdx]));
+                    }
+                    // Left (L): x = -1
+                    if (x === -1) {
+                        // Kociemba L grid:
+                        // 0 1 2 (y=1)
+                        // 3 4 5 (y=0)
+                        // 6 7 8 (y=-1)
+                        const kIdx = (1 - y) * 3 + (z + 1);
+                        materials[1].color.setHex(colorToHex(cubeState.L[kIdx]));
+                    }
+                    // Right (R): x = 1
+                    if (x === 1) {
+                        // Kociemba R grid:
+                        // 0 1 2 (y=1)
+                        // 3 4 5 (y=0)
+                        // 6 7 8 (y=-1)
+                        const kIdx = (1 - y) * 3 + (1 - z);
+                        materials[0].color.setHex(colorToHex(cubeState.R[kIdx]));
+                    }
+                });
+            }, [cubeState]);
+
+            return <div ref={mountRef} className="w-full h-64 md:h-80 cursor-move" />;
+        };
+
         function App() {
             const [cube, setCube] = useState(INITIAL_STATE);
             const [initialInputState, setInitialInputState] = useState(null);
@@ -213,9 +400,52 @@
                 return faces.map(f => state[f].map(colorToLetter).join('')).join('');
             };
 
+            const validateCube = (state) => {
+                const counts = {};
+                const colors = ['white', 'yellow', 'red', 'orange', 'green', 'blue'];
+                colors.forEach(c => counts[c] = 0);
+
+                Object.values(state).forEach(face => {
+                    face.forEach(color => {
+                        if (counts[color] !== undefined) {
+                            counts[color]++;
+                        }
+                    });
+                });
+
+                const invalidColors = colors.filter(c => counts[c] !== 9);
+                if (invalidColors.length > 0) {
+                    const message = invalidColors.map(c => `${c}: ${counts[c]}/9`).join(', ');
+                    return { 
+                        valid: false, 
+                        message: `Invalid cube state. Each color must appear exactly 9 times. Current counts: ${message}` 
+                    };
+                }
+
+                // Check centers are unique
+                const centers = Object.values(state).map(face => face[4]);
+                const uniqueCenters = new Set(centers);
+                if (uniqueCenters.size !== 6) {
+                    return {
+                        valid: false,
+                        message: "Invalid cube: Each face center must have a unique color."
+                    };
+                }
+
+                return { valid: true, message: null };
+            };
+
             const handleSolve = () => {
                 try {
                     setError(null);
+
+                    // Validate cube state before solving
+                    const validation = validateCube(cube);
+                    if (!validation.valid) {
+                        setError(validation.message);
+                        return;
+                    }
+
                     const cubeString = getKociembaString(cube);
                     setInitialInputState(JSON.parse(JSON.stringify(cube)));
                     
@@ -440,6 +670,16 @@
 
                         {/* Right Column: Solution & Controls */}
                         <div className="lg:col-span-5 space-y-6">
+                            {/* 3D Visualization Card */}
+                            <div className="glass rounded-3xl p-6 flex flex-col items-center">
+                                <div className="w-full flex items-center justify-between mb-4">
+                                    <h2 className="text-lg font-bold">3D View</h2>
+                                    <span className="text-xs text-gray-400 uppercase tracking-widest">Interactive</span>
+                                </div>
+                                <Cube3D cubeState={cube} />
+                                <p className="text-[10px] text-gray-500 mt-2 uppercase tracking-tighter">Drag to rotate • Scroll to zoom (disabled)</p>
+                            </div>
+
                             <div className="glass rounded-3xl p-8 flex flex-col h-full">
                                 <h2 className="text-xl font-bold mb-6">Solution</h2>
                                 
