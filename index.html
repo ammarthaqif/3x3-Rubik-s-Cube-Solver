@@ -1,13 +1,543 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
-  </head>
-  <body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3x3 Rubik's Cube Solver - Standalone</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <!-- Kociemba Solver (min2phase) -->
+    <script src="https://cdn.jsdelivr.net/npm/cube-solver@2.4.1/dist/index.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0a0a0a;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .cube-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2px;
+            background: #1a1a1a;
+            padding: 2px;
+            border-radius: 4px;
+        }
+        .cube-cell {
+            aspect-ratio: 1;
+            border-radius: 2px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .cube-cell:hover {
+            filter: brightness(1.2);
+            transform: scale(1.05);
+        }
+        .active-face {
+            outline: 2px solid #3b82f6;
+            outline-offset: 4px;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
 
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const COLOR_MAP = {
+            white: '#ffffff',
+            yellow: '#fbbf24',
+            red: '#ef4444',
+            orange: '#f97316',
+            green: '#22c55e',
+            blue: '#3b82f6',
+            gray: '#374151'
+        };
+
+        const FACE_NAMES = {
+            U: 'Top (White)',
+            D: 'Bottom (Yellow)',
+            L: 'Left (Orange)',
+            R: 'Right (Red)',
+            F: 'Front (Green)',
+            B: 'Back (Blue)'
+        };
+
+        const INITIAL_STATE = {
+            U: Array(9).fill('white'),
+            D: Array(9).fill('yellow'),
+            L: Array(9).fill('orange'),
+            R: Array(9).fill('red'),
+            F: Array(9).fill('green'),
+            B: Array(9).fill('blue')
+        };
+
+        // Move simulation logic
+        const rotateFace = (face) => {
+            const newFace = [...face];
+            const temp = [newFace[0], newFace[1], newFace[2], newFace[3], newFace[5], newFace[6], newFace[7], newFace[8]];
+            newFace[0] = temp[5]; newFace[1] = temp[3]; newFace[2] = temp[0];
+            newFace[3] = temp[6]; newFace[5] = temp[1];
+            newFace[6] = temp[7]; newFace[7] = temp[4]; newFace[8] = temp[2];
+            return newFace;
+        };
+
+        const applyMove = (state, move) => {
+            const newState = JSON.parse(JSON.stringify(state));
+            const baseMove = move[0];
+            const modifier = move.substring(1);
+            const count = modifier === '2' ? 2 : modifier === "'" ? 3 : 1;
+
+            for (let i = 0; i < count; i++) {
+                const s = JSON.parse(JSON.stringify(newState));
+                if (baseMove === 'U') {
+                    newState.U = rotateFace(newState.U);
+                    newState.F[0] = s.R[0]; newState.F[1] = s.R[1]; newState.F[2] = s.R[2];
+                    newState.L[0] = s.F[0]; newState.L[1] = s.F[1]; newState.L[2] = s.F[2];
+                    newState.B[0] = s.L[0]; newState.B[1] = s.L[1]; newState.B[2] = s.L[2];
+                    newState.R[0] = s.B[0]; newState.R[1] = s.B[1]; newState.R[2] = s.B[2];
+                } else if (baseMove === 'D') {
+                    newState.D = rotateFace(newState.D);
+                    newState.F[6] = s.L[6]; newState.F[7] = s.L[7]; newState.F[8] = s.L[8];
+                    newState.R[6] = s.F[6]; newState.R[7] = s.F[7]; newState.R[8] = s.F[8];
+                    newState.B[6] = s.R[6]; newState.B[7] = s.R[7]; newState.B[8] = s.R[8];
+                    newState.L[6] = s.B[6]; newState.L[7] = s.B[7]; newState.L[8] = s.B[8];
+                } else if (baseMove === 'L') {
+                    newState.L = rotateFace(newState.L);
+                    newState.F[0] = s.U[0]; newState.F[3] = s.U[3]; newState.F[6] = s.U[6];
+                    newState.D[0] = s.F[0]; newState.D[3] = s.F[3]; newState.D[6] = s.F[6];
+                    newState.B[8] = s.D[0]; newState.B[5] = s.D[3]; newState.B[2] = s.D[6];
+                    newState.U[0] = s.B[8]; newState.U[3] = s.B[5]; newState.U[6] = s.B[2];
+                } else if (baseMove === 'R') {
+                    newState.R = rotateFace(newState.R);
+                    newState.F[2] = s.D[2]; newState.F[5] = s.D[5]; newState.F[8] = s.D[8];
+                    newState.U[2] = s.F[2]; newState.U[5] = s.F[5]; newState.U[8] = s.F[8];
+                    newState.B[6] = s.U[2]; newState.B[3] = s.U[5]; newState.B[0] = s.U[8];
+                    newState.D[2] = s.B[6]; newState.D[5] = s.B[3]; newState.D[8] = s.B[0];
+                } else if (baseMove === 'F') {
+                    newState.F = rotateFace(newState.F);
+                    newState.U[6] = s.L[8]; newState.U[7] = s.L[5]; newState.U[8] = s.L[2];
+                    newState.R[0] = s.U[6]; newState.R[3] = s.U[7]; newState.R[6] = s.U[8];
+                    newState.D[2] = s.R[0]; newState.D[1] = s.R[3]; newState.D[0] = s.R[6];
+                    newState.L[8] = s.D[2]; newState.L[5] = s.D[1]; newState.L[2] = s.D[0];
+                } else if (baseMove === 'B') {
+                    newState.B = rotateFace(newState.B);
+                    newState.U[0] = s.R[2]; newState.U[1] = s.R[5]; newState.U[2] = s.R[8];
+                    newState.L[0] = s.U[2]; newState.L[3] = s.U[1]; newState.L[6] = s.U[0];
+                    newState.D[6] = s.L[0]; newState.D[7] = s.L[3]; newState.D[8] = s.L[6];
+                    newState.R[2] = s.D[8]; newState.R[5] = s.D[7]; newState.R[8] = s.D[6];
+                }
+            }
+            return newState;
+        };
+
+        const getCubeAtStep = (initialState, solution, step) => {
+            let currentState = JSON.parse(JSON.stringify(initialState));
+            for (let i = 0; i <= step; i++) {
+                currentState = applyMove(currentState, solution[i]);
+            }
+            return currentState;
+        };
+
+        function App() {
+            const [cube, setCube] = useState(INITIAL_STATE);
+            const [initialInputState, setInitialInputState] = useState(null);
+            const [activeFace, setActiveFace] = useState('F');
+            const [selectedColor, setSelectedColor] = useState('green');
+            const [solution, setSolution] = useState([]);
+            const [currentStep, setCurrentStep] = useState(-1);
+            const [isSolving, setIsSolving] = useState(false);
+            const [error, setError] = useState(null);
+            const [isScanning, setIsScanning] = useState(false);
+            const videoRef = useRef(null);
+            const canvasRef = useRef(null);
+
+            useEffect(() => {
+                if (isSolving && initialInputState && currentStep >= 0) {
+                    const stateAtStep = getCubeAtStep(initialInputState, solution, currentStep);
+                    setCube(stateAtStep);
+                } else if (!isSolving && initialInputState && currentStep === -1) {
+                    setCube(initialInputState);
+                }
+            }, [currentStep, isSolving, initialInputState, solution]);
+
+            useEffect(() => {
+                // Initialize Lucide icons
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }, [activeFace, isSolving, isScanning, error, currentStep]);
+
+            const getKociembaString = (state) => {
+                const colorToLetter = (c) => {
+                    if (c === 'white') return 'U';
+                    if (c === 'yellow') return 'D';
+                    if (c === 'red') return 'R';
+                    if (c === 'orange') return 'L';
+                    if (c === 'green') return 'F';
+                    if (c === 'blue') return 'B';
+                    return 'U';
+                };
+                const faces = ['U', 'R', 'F', 'D', 'L', 'B'];
+                return faces.map(f => state[f].map(colorToLetter).join('')).join('');
+            };
+
+            const handleSolve = () => {
+                try {
+                    setError(null);
+                    const cubeString = getKociembaString(cube);
+                    setInitialInputState(JSON.parse(JSON.stringify(cube)));
+                    
+                    console.log("Input string:", cubeString);
+
+                    // Use the global solver from the script tag
+                    // The cube-solver package usually exports a 'solve' function
+                    const solver = window.solve || (window.CubeSolver && window.CubeSolver.solve) || (window.CubeSolver && window.CubeSolver.default);
+                    
+                    if (!solver) {
+                        console.log("Available globals:", Object.keys(window).filter(k => k.toLowerCase().includes('solve') || k.toLowerCase().includes('cube')));
+                        throw new Error("Solver library not loaded. Please check your internet connection.");
+                    }
+
+                    const result = solver(cubeString);
+                    if (result) {
+                        const moves = result.split(' ').filter(m => m.length > 0);
+                        setSolution(moves);
+                        setCurrentStep(0);
+                        setIsSolving(true);
+                        confetti({
+                            particleCount: 100,
+                            spread: 70,
+                            origin: { y: 0.6 },
+                            colors: ['#ffffff', '#fbbf24', '#ef4444', '#f97316', '#22c55e', '#3b82f6']
+                        });
+                    }
+                } catch (err) {
+                    setError(`Solve error: ${err.message}`);
+                }
+            };
+
+            const resetCube = () => {
+                setCube(INITIAL_STATE);
+                setSolution([]);
+                setCurrentStep(-1);
+                setIsSolving(false);
+                setInitialInputState(null);
+                setError(null);
+            };
+
+            const handleCellClick = (face, index) => {
+                if (isSolving) return;
+                const newCube = { ...cube };
+                newCube[face][index] = selectedColor;
+                setCube(newCube);
+            };
+
+            // Scanning logic
+            const startScanning = async () => {
+                setIsScanning(true);
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = stream;
+                    }
+                } catch (err) {
+                    setError("Camera access denied.");
+                    setIsScanning(false);
+                }
+            };
+
+            const stopScanning = () => {
+                if (videoRef.current && videoRef.current.srcObject) {
+                    const tracks = videoRef.current.srcObject.getTracks();
+                    tracks.forEach(track => track.stop());
+                }
+                setIsScanning(false);
+            };
+
+            const captureFace = () => {
+                if (!videoRef.current || !canvasRef.current) return;
+                const canvas = canvasRef.current;
+                const video = videoRef.current;
+                const ctx = canvas.getContext('2d');
+                
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0);
+
+                const size = Math.min(canvas.width, canvas.height) * 0.6;
+                const startX = (canvas.width - size) / 2;
+                const startY = (canvas.height - size) / 2;
+                const cellSize = size / 3;
+
+                const newFaceColors = [];
+                for (let i = 0; i < 9; i++) {
+                    const row = Math.floor(i / 3);
+                    const col = i % 3;
+                    const x = startX + col * cellSize + cellSize / 2;
+                    const y = startY + row * cellSize + cellSize / 2;
+                    
+                    const pixel = ctx.getImageData(x, y, 1, 1).data;
+                    newFaceColors.push(rgbToColor(pixel[0], pixel[1], pixel[2]));
+                }
+
+                const newCube = { ...cube };
+                newCube[activeFace] = newFaceColors;
+                setCube(newCube);
+                stopScanning();
+            };
+
+            const rgbToColor = (r, g, b) => {
+                r /= 255; g /= 255; b /= 255;
+                const max = Math.max(r, g, b), min = Math.min(r, g, b);
+                let h, s, l = (max + min) / 2;
+
+                if (max === min) {
+                    h = s = 0;
+                } else {
+                    const d = max - min;
+                    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                    switch (max) {
+                        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                        case g: h = (b - r) / d + 2; break;
+                        case b: h = (r - g) / d + 4; break;
+                    }
+                    h /= 6;
+                }
+
+                h *= 360;
+                if (l > 0.8) return 'white';
+                if (l < 0.2) return 'gray';
+                if (s < 0.2) return 'white';
+                if (h > 30 && h < 90) return 'yellow';
+                if (h > 90 && h < 160) return 'green';
+                if (h > 160 && h < 260) return 'blue';
+                if (h > 340 || h < 15) return 'red';
+                if (h >= 15 && h <= 30) return 'orange';
+                return 'white';
+            };
+
+            return (
+                <div className="min-h-screen p-4 md:p-8 max-w-5xl mx-auto">
+                    {/* Header */}
+                    <header className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-900/20">
+                                <i data-lucide="box" className="w-6 h-6"></i>
+                            </div>
+                            <h1 className="text-2xl font-bold tracking-tight">Kociemba Solver</h1>
+                        </div>
+                        <button 
+                            onClick={resetCube}
+                            className="p-2 hover:bg-white/5 rounded-full transition-colors"
+                        >
+                            <i data-lucide="rotate-ccw" className="w-5 h-5"></i>
+                        </button>
+                    </header>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        {/* Left Column: Cube Input */}
+                        <div className="lg:col-span-7 space-y-6">
+                            <div className="glass rounded-3xl p-6 md:p-8">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div>
+                                        <h2 className="text-lg font-semibold">{FACE_NAMES[activeFace]}</h2>
+                                        <p className="text-sm text-gray-400">Select colors for this face</p>
+                                    </div>
+                                    <button 
+                                        onClick={startScanning}
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl transition-all font-medium text-sm"
+                                    >
+                                        <i data-lucide="camera" className="w-4 h-4"></i>
+                                        Scan Face
+                                    </button>
+                                </div>
+
+                                {/* Cube Face Selector */}
+                                <div className="flex justify-center gap-4 mb-8 overflow-x-auto py-2">
+                                    {Object.keys(INITIAL_STATE).map(face => (
+                                        <button
+                                            key={face}
+                                            onClick={() => setActiveFace(face)}
+                                            className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${activeFace === face ? 'bg-blue-600 scale-110 shadow-lg shadow-blue-900/40' : 'bg-white/5 hover:bg-white/10'}`}
+                                        >
+                                            <span className="font-bold">{face}</span>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Main Cube Grid */}
+                                <div className="flex justify-center mb-8">
+                                    <div className="cube-grid w-64 h-64 md:w-80 md:h-80 p-3 bg-black/40 rounded-2xl shadow-2xl">
+                                        {cube[activeFace].map((color, idx) => (
+                                            <div
+                                                key={idx}
+                                                onClick={() => handleCellClick(activeFace, idx)}
+                                                className="cube-cell"
+                                                style={{ backgroundColor: COLOR_MAP[color] }}
+                                            >
+                                                {idx === 4 && (
+                                                    <div className="w-full h-full flex items-center justify-center opacity-20 pointer-events-none">
+                                                        <span className="text-black font-black text-2xl">{activeFace}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Color Picker */}
+                                <div className="flex justify-center gap-3 md:gap-4">
+                                    {Object.keys(COLOR_MAP).filter(c => c !== 'gray').map(color => (
+                                        <button
+                                            key={color}
+                                            onClick={() => setSelectedColor(color)}
+                                            className={`w-10 h-10 md:w-12 md:h-12 rounded-full border-2 transition-all ${selectedColor === color ? 'border-white scale-125 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                                            style={{ backgroundColor: COLOR_MAP[color] }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            {error && (
+                                <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl flex items-center gap-3">
+                                    <i data-lucide="alert-circle" className="w-5 h-5"></i>
+                                    <p className="text-sm font-medium">{error}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Right Column: Solution & Controls */}
+                        <div className="lg:col-span-5 space-y-6">
+                            <div className="glass rounded-3xl p-8 flex flex-col h-full">
+                                <h2 className="text-xl font-bold mb-6">Solution</h2>
+                                
+                                {!isSolving ? (
+                                    <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6 py-12">
+                                        <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-2">
+                                            <i data-lucide="cpu" className="w-10 h-10 text-blue-500 opacity-50"></i>
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-lg">Ready to Solve?</h3>
+                                            <p className="text-gray-400 text-sm max-w-[240px] mx-auto mt-2">
+                                                Ensure all faces are correctly colored before starting the solver.
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={handleSolve}
+                                            className="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-bold text-lg shadow-xl shadow-blue-900/20 transition-all active:scale-95"
+                                        >
+                                            Solve Cube
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex flex-col">
+                                        <div className="flex items-center justify-between mb-6">
+                                            <span className="text-sm font-medium text-gray-400">
+                                                Step {currentStep + 1} of {solution.length}
+                                            </span>
+                                            <span className="px-3 py-1 bg-green-500/10 text-green-400 rounded-full text-xs font-bold uppercase tracking-wider">
+                                                Solving
+                                            </span>
+                                        </div>
+
+                                        <div className="flex-1 overflow-y-auto mb-8 pr-2">
+                                            <div className="flex flex-wrap gap-3">
+                                                {solution.map((move, idx) => (
+                                                    <div
+                                                        key={idx}
+                                                        className={`w-12 h-12 flex items-center justify-center rounded-xl font-bold text-lg transition-all ${currentStep === idx ? 'bg-blue-600 text-white scale-110 shadow-lg' : idx < currentStep ? 'bg-white/10 text-gray-500' : 'bg-white/5 text-gray-300'}`}
+                                                    >
+                                                        {move}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <button
+                                                onClick={() => setCurrentStep(prev => Math.max(-1, prev - 1))}
+                                                disabled={currentStep === -1}
+                                                className="py-4 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-2xl font-bold transition-all flex items-center justify-center gap-2"
+                                            >
+                                                <i data-lucide="chevron-left" className="w-5 h-5"></i>
+                                                Prev
+                                            </button>
+                                            <button
+                                                onClick={() => setCurrentStep(prev => Math.min(solution.length - 1, prev + 1))}
+                                                disabled={currentStep === solution.length - 1}
+                                                className="py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 rounded-2xl font-bold transition-all flex items-center justify-center gap-2"
+                                            >
+                                                Next
+                                                <i data-lucide="chevron-right" className="w-5 h-5"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Camera Modal */}
+                    {isScanning && (
+                        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black p-4">
+                            <div className="relative w-full max-w-md aspect-square rounded-3xl overflow-hidden border-2 border-blue-500/50">
+                                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 border-[40px] border-black/60 pointer-events-none">
+                                    <div className="w-full h-full border-2 border-white/50 rounded-lg grid grid-cols-3 grid-rows-3">
+                                        {Array(9).fill(0).map((_, i) => (
+                                            <div key={i} className="border border-white/20" />
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-8 flex gap-4">
+                                <button onClick={stopScanning} className="px-8 py-4 bg-white/10 rounded-2xl font-bold">Cancel</button>
+                                <button onClick={captureFace} className="px-8 py-4 bg-blue-600 rounded-2xl font-bold">Capture</button>
+                            </div>
+                            <canvas ref={canvasRef} className="hidden" />
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+
+        // Initialize Lucide icons after render
+        setTimeout(() => lucide.createIcons(), 100);
+    </script>
+</body>
+</html>
