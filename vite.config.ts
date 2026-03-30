@@ -6,6 +6,7 @@ import {defineConfig, loadEnv} from 'vite';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
+    base: '/3x3-Rubik-s-Cube-Solver/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
