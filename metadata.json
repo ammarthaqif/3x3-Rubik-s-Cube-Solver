@@ -1,0 +1,7 @@
+{
+  "name": "Kociemba Cube Solver",
+  "description": "A professional Rubik's Cube solver using the Kociemba algorithm with a sleek, ASolver-inspired UI.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
