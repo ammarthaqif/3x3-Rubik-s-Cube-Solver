@@ -20,9 +20,12 @@ import {
   Scan
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import * as CubeSolver from 'cube-solver';
+// @ts-ignore
+import solver from 'cube-solver';
 import { Color, CubeState, INITIAL_STATE, COLOR_MAP, FACE_NAMES } from './types';
 import { getCubeAtStep } from './lib/cubeLogic';
+
+console.log("Kociemba Solver App Initializing...");
 
 export default function App() {
   const [cube, setCube] = useState<CubeState>(INITIAL_STATE);
@@ -69,24 +72,32 @@ export default function App() {
       const cubeString = getKociembaString(cube);
       setInitialInputState(JSON.parse(JSON.stringify(cube))); // Save input state
       
-      let result: string | null = null;
-      const solverFunc = (CubeSolver as any).solve || (CubeSolver as any).default?.solve || (CubeSolver as any).default || CubeSolver;
+      console.log("Solving cube:", cubeString);
       
-      if (typeof solverFunc === 'function') {
-        result = solverFunc(cubeString);
+      // Try to use the solver
+      let result: string | null = null;
+      
+      if (typeof solver === 'function') {
+        result = (solver as any)(cubeString);
+      } else if (typeof (solver as any).solve === 'function') {
+        result = (solver as any).solve(cubeString);
+      } else if (typeof (solver as any).default === 'function') {
+        result = (solver as any).default(cubeString);
       } else {
-        throw new Error("Solver function not found");
+        console.error("Solver is not a function:", solver);
+        throw new Error("Solver function not found. Please check console.");
       }
 
       if (result) {
+        console.log("Solution found:", result);
         const moves = result.split(' ').filter((m: string) => m.length > 0);
         setSolution(moves);
         setCurrentStep(0);
         setIsSolving(true);
       }
     } catch (err) {
-      setError("Invalid cube configuration. Please check the colors.");
-      console.error(err);
+      setError("Invalid cube configuration or solver error. Please check the colors.");
+      console.error("Solve error:", err);
     }
   };
 
